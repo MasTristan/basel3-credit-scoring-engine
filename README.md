@@ -94,7 +94,7 @@ Streamlit demo runs without an Oracle install.
 
 ```
 projet1_bale3/
-├── CLAUDE.md
+├── ARCHITECTURE.md
 ├── README.md
 ├── requirements.txt              <- Streamlit Cloud entry point deps
 ├── streamlit_app.py              <- public dashboard
@@ -264,7 +264,7 @@ SELECT * FROM V_CAPITAL_SUMMARY;
 | \~0.07         | \~0.03        | 0          |
 
 These numbers track the order-of-magnitude benchmarks described in
-`CLAUDE.md` (RWA density \~80-90% globally, capital ratio \~7-8% of EAD,
+`ARCHITECTURE.md` (RWA density \~80-90% globally, capital ratio \~7-8% of EAD,
 default rate \~3%).
 
 ---
