@@ -8,6 +8,10 @@ The project is a public portfolio piece for a Business Analyst Risk &
 Finance IT profile combining Oracle PL/SQL expertise with EBA / Basel III
 regulation.
 
+> **Live demo (no install required):** the Streamlit app at
+> `streamlit_app.py` is deployed on Streamlit Community Cloud — see
+> section *Live demo* below.
+
 ---
 
 ## 1. Business context
@@ -36,12 +40,13 @@ Metrics computed:
 
 ```
 +----------------------+      +------------------------+
-|  generate_portfolio  |----->|  *.sql INSERT scripts  |
+|  generate_portfolio  |----->|  SQL inserts + CSVs    |
 |       (Python)       |      +-----------+------------+
 +----------------------+                  |
                                           v
 +-----------------------------------------+-------------------------------+
 |                            Oracle XE 21c (schema BASEL_RISK)            |
+|     -- production reference engine --                                   |
 |                                                                         |
 |  COUNTERPARTIES --< CONTRACTS --< COLLATERALS                            |
 |                          |                                              |
@@ -57,10 +62,21 @@ Metrics computed:
 |                                                                         |
 |  V_PORTFOLIO_RISK     V_CAPITAL_SUMMARY     (reporting layer)           |
 +-------------------------------------------------------------------------+
+                                          ^
+                                          | identical aggregates
+                                          v
++----------------------+      +------------------------+
+|  compute_metrics.py  |----->|   data/*.csv           |---> streamlit_app.py
+|  (pandas reference)  |      +------------------------+        (public demo)
++----------------------+
 ```
 
-**Stack**: Oracle XE 21c (free), Python 3.x (open-source), Power BI Desktop
-(free, no online publishing). Zero paid licence.
+**Stack**: Oracle XE 21c (free), Python 3.x (open-source), Streamlit
+Community Cloud (free public hosting). Zero paid licence.
+
+The Oracle engine under `sql/procedures/` is the production reference; the
+Python module `python/compute_metrics.py` mirrors the same logic so the
+Streamlit demo runs without an Oracle install.
 
 ---
 
@@ -70,6 +86,13 @@ Metrics computed:
 projet1_bale3/
 ├── CLAUDE.md
 ├── README.md
+├── requirements.txt              <- Streamlit Cloud entry point deps
+├── streamlit_app.py              <- public dashboard
+├── data/                         <- pre-computed CSV outputs (committed)
+│   ├── contracts_enriched.csv
+│   ├── portfolio_risk.csv
+│   ├── capital_summary.csv
+│   └── control_log.csv
 ├── sql/
 │   ├── ddl/
 │   │   ├── 01_create_schema.sql
@@ -84,13 +107,44 @@ projet1_bale3/
 │       ├── v_portfolio_risk.sql
 │       └── v_capital_summary.sql
 └── python/
-    ├── generate_portfolio.py
+    ├── generate_portfolio.py     <- synthetic data generator (SQL + CSV)
+    ├── compute_metrics.py        <- pandas reference pipeline (feeds data/)
     └── requirements.txt
 ```
 
 ---
 
-## 4. Setup
+## Live demo
+
+The dashboard at `streamlit_app.py` is published on Streamlit Community
+Cloud — open it in a browser, no install required.
+
+> **URL**: _add the deployed URL here after first deploy_
+
+To deploy your own copy:
+
+1. Fork this repository on GitHub.
+2. Sign in to [share.streamlit.io](https://share.streamlit.io) with your
+   GitHub account.
+3. Click **New app**, pick the fork, branch `main`, file
+   `streamlit_app.py`.
+4. Streamlit Cloud reads `requirements.txt` at the repo root and starts
+   the app. Pre-computed CSVs in `data/` make the demo work out of the
+   box; no database is needed.
+
+To run it locally:
+
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+---
+
+## 4. Setup (full Oracle pipeline)
+
+> **Note**: this section is only needed to run the **production**
+> PL/SQL engine. The Streamlit dashboard above runs without any of this.
 
 ### 4.1. Install Oracle XE 21c (free)
 
@@ -114,12 +168,19 @@ pip install -r requirements.txt
 python generate_portfolio.py
 ```
 
-This writes four INSERT scripts in `python/data/`:
+This writes four INSERT scripts and matching CSV exports in `python/data/`:
 
-* `counterparties_data.sql`
-* `contracts_data.sql`
-* `collaterals_data.sql`
-* `regulatory_parameters_data.sql`
+* `counterparties_data.sql` / `counterparties.csv`
+* `contracts_data.sql`      / `contracts.csv`
+* `collaterals_data.sql`    / `collaterals.csv`
+* `parameters_data.sql`     / `parameters.csv`
+
+To regenerate the aggregated CSVs consumed by the Streamlit dashboard
+(without touching Oracle):
+
+```bash
+python python/compute_metrics.py        # writes ../data/*.csv
+```
 
 ### 4.3. Load the database
 

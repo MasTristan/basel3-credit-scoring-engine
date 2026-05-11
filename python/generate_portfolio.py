@@ -408,41 +408,44 @@ def generate_regulatory_parameters() -> pd.DataFrame:
 # Main                                                                         #
 # --------------------------------------------------------------------------- #
 
-def main() -> None:
-    """Generate all data files."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+def build_dataframes() -> dict[str, pd.DataFrame]:
+    """Build the four core dataframes (used by compute_metrics.py)."""
     Faker.seed(SEED)
     ctx = GeneratorContext(rng=np.random.default_rng(SEED), fake=Faker("fr_FR"))
-
     counterparties = generate_counterparties(ctx)
     contracts = generate_contracts(ctx, counterparties)
     collaterals = generate_collaterals(ctx, contracts)
     params = generate_regulatory_parameters()
+    return {
+        "counterparties": counterparties,
+        "contracts": contracts,
+        "collaterals": collaterals,
+        "parameters": params,
+    }
 
-    _write_insert(
-        os.path.join(OUTPUT_DIR, "counterparties_data.sql"),
-        "COUNTERPARTIES",
-        list(counterparties.columns),
-        counterparties.itertuples(index=False, name=None),
-    )
-    _write_insert(
-        os.path.join(OUTPUT_DIR, "contracts_data.sql"),
-        "CONTRACTS",
-        list(contracts.columns),
-        contracts.itertuples(index=False, name=None),
-    )
-    _write_insert(
-        os.path.join(OUTPUT_DIR, "collaterals_data.sql"),
-        "COLLATERALS",
-        list(collaterals.columns),
-        collaterals.itertuples(index=False, name=None),
-    )
-    _write_insert(
-        os.path.join(OUTPUT_DIR, "regulatory_parameters_data.sql"),
-        "REGULATORY_PARAMETERS",
-        list(params.columns),
-        params.itertuples(index=False, name=None),
-    )
+
+def main() -> None:
+    """Generate SQL INSERT scripts + CSV exports for the synthetic portfolio."""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    frames = build_dataframes()
+
+    table_map = {
+        "counterparties": "COUNTERPARTIES",
+        "contracts":      "CONTRACTS",
+        "collaterals":    "COLLATERALS",
+        "parameters":     "REGULATORY_PARAMETERS",
+    }
+
+    for key, table in table_map.items():
+        df = frames[key]
+        _write_insert(
+            os.path.join(OUTPUT_DIR, f"{key}_data.sql"),
+            table,
+            list(df.columns),
+            df.itertuples(index=False, name=None),
+        )
+        df.to_csv(os.path.join(OUTPUT_DIR, f"{key}.csv"), index=False)
+        logger.info("Wrote %s.csv", key)
 
     logger.info("Done. Files written to %s", OUTPUT_DIR)
 
