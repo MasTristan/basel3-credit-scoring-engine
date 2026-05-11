@@ -1,6 +1,15 @@
+<!--
+GitHub topics to apply via Settings > Topics:
+basel3, credit-risk, oracle, plsql, regulatory-reporting,
+streamlit, banking, crr2, risk-management, data-engineering
+-->
+
 # Basel III Credit Scoring Engine
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://scoring-cr-dit-b-le-iii.streamlit.app/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://python.org)
+[![Oracle XE](https://img.shields.io/badge/Oracle-XE%2021c-red?logo=oracle)](https://www.oracle.com/database/technologies/xe-downloads.html)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 PL/SQL engine that computes regulatory credit risk metrics (PD, LGD, EAD,
 RWA, capital requirement) for a synthetic automotive-leasing portfolio,
@@ -317,5 +326,10 @@ END;
 
 ## 10. Author
 
-**Tristan Mas** - Business Analyst Risk & Finance IT
-[github.com/tristan-mas](https://github.com/tristan-mas)
+**Tristan Mas** — Business Analyst Risk & Finance IT
+Combines Oracle PL/SQL engineering with EBA / Basel III regulatory expertise.
+Available for consulting engagements (remote, Western Europe).
+
+- GitHub : [github.com/MasTristan](https://github.com/MasTristan)
+- LinkedIn : [linkedin.com/in/tristan-mas](https://linkedin.com/in/tristan-mas)
+- Email : tristan.mas@telecom-st-etienne.fr

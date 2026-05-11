@@ -33,17 +33,30 @@ st.set_page_config(
 
 @st.cache_data
 def load_contracts() -> pd.DataFrame:
-    return pd.read_csv(DATA_DIR / "contracts_enriched.csv")
+    path = DATA_DIR / "contracts_enriched.csv"
+    if not path.exists():
+        st.error(
+            f"Data file not found: {path.name}. "
+            "Run `python python/compute_metrics.py` to generate it."
+        )
+        st.stop()
+    return pd.read_csv(path)
 
 
 @st.cache_data
 def load_summary() -> pd.DataFrame:
-    return pd.read_csv(DATA_DIR / "capital_summary.csv")
+    path = DATA_DIR / "capital_summary.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
 
 
 @st.cache_data
 def load_controls() -> pd.DataFrame:
-    return pd.read_csv(DATA_DIR / "control_log.csv")
+    path = DATA_DIR / "control_log.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +108,7 @@ st.sidebar.caption(
     "Source of truth: Oracle packages under `sql/procedures/`."
 )
 st.sidebar.markdown(
-    "[GitHub repo](https://github.com/MasTristan/Moteur-de-Scoring-Cr-dit-B-le-III)"
+    "[GitHub repo](https://github.com/MasTristan/basel3-credit-scoring-engine)"
 )
 
 mask = (
@@ -120,7 +133,15 @@ st.markdown(
 )
 
 if df.empty:
-    st.warning("No contracts match the current filters.")
+    st.warning(
+        "No contracts match the current filters. "
+        "Adjust the sidebar selections to display data."
+    )
+    st.info(
+        f"Total portfolio: {len(contracts):,} contracts across "
+        f"{contracts['COUNTRY_CODE'].nunique()} countries and "
+        f"{contracts['SEGMENT_CODE'].nunique()} regulatory segments."
+    )
     st.stop()
 
 
@@ -135,22 +156,34 @@ nb_default = int(df["STATUS"].eq("DEFAULT").sum())
 capital_ratio = total_cap / total_ead if total_ead else 0
 default_rate = nb_default / len(df) if len(df) else 0
 
+# Reference values computed on the full (unfiltered) portfolio.
+ref_ead = contracts["EAD_VALUE"].sum()
+ref_cap_ratio = (contracts["CAPITAL_REQUIREMENT"].sum() / ref_ead
+                 if ref_ead else 0)
+ref_default_rate = (contracts["STATUS"].eq("DEFAULT").sum() / len(contracts)
+                    if len(contracts) else 0)
+delta_cap = capital_ratio - ref_cap_ratio
+delta_def = default_rate - ref_default_rate
+
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Contracts",       f"{len(df):,}")
 k2.metric("Total EAD",       fmt_eur(total_ead))
 k3.metric("Total RWA",       fmt_eur(total_rwa))
 k4.metric("Capital req.",    fmt_eur(total_cap))
-k5.metric("Capital ratio",   fmt_pct(capital_ratio))
-k6.metric("Default rate",    fmt_pct(default_rate))
+k5.metric("Capital ratio",   fmt_pct(capital_ratio),
+          delta=f"{delta_cap * 100:+.2f}pp vs full portfolio")
+k6.metric("Default rate",    fmt_pct(default_rate),
+          delta=f"{delta_def * 100:+.2f}pp vs full portfolio",
+          delta_color="inverse")
 
 
 # --------------------------------------------------------------------------- #
 # Tabs                                                                         #
 # --------------------------------------------------------------------------- #
 
-tab_about, tab_overview, tab_segments, tab_quality, tab_data = st.tabs(
+tab_about, tab_overview, tab_segments, tab_quality, tab_data, tab_simulator = st.tabs(
     ["About this engine", "Overview", "Segment breakdown",
-     "Quality controls", "Raw data"]
+     "Quality controls", "Raw data", "Single contract simulator"]
 )
 
 with tab_about:
@@ -276,7 +309,7 @@ with tab_about:
          "Risk weight": "150 %",
          "CRR2 ref.": "Art. 127"},
     ])
-    st.dataframe(seg_table, hide_index=True, width="stretch")
+    st.dataframe(seg_table, hide_index=True, use_container_width=True)
 
     st.markdown("---")
     st.subheader("Pipeline architecture")
@@ -328,7 +361,7 @@ with tab_about:
         {"Code": "CTR-008", "Severity": "ERROR",
          "Rule": "Counterparty defaulted but contract STATUS ≠ DEFAULT"},
     ])
-    st.dataframe(ctl_table, hide_index=True, width="stretch")
+    st.dataframe(ctl_table, hide_index=True, use_container_width=True)
 
     st.markdown("---")
     st.subheader("How to read this dashboard")
@@ -359,14 +392,14 @@ with tab_about:
         {"Topic": "Eligible collateral / haircuts",   "Reference": "CRR2 Art. 197-230"},
         {"Topic": "Definition of default",             "Reference": "EBA/GL/2016/07"},
     ])
-    st.dataframe(ref_table, hide_index=True, width="stretch")
+    st.dataframe(ref_table, hide_index=True, use_container_width=True)
 
     st.markdown("---")
     st.markdown(
         "**Author** — Tristan Mas, Business Analyst Risk & Finance IT. "
         "Combines Oracle PL/SQL engineering with EBA / Basel III "
         "regulatory expertise. "
-        "[GitHub](https://github.com/MasTristan/Moteur-de-Scoring-Cr-dit-B-le-III)"
+        "[GitHub](https://github.com/MasTristan/basel3-credit-scoring-engine)"
     )
 
 with tab_overview:
@@ -389,14 +422,14 @@ with tab_overview:
         labels={"value": "EUR", "variable": "Metric"},
     )
     fig1.update_layout(yaxis_title="EUR", legend_title="")
-    col_a.plotly_chart(fig1, width="stretch")
+    col_a.plotly_chart(fig1, use_container_width=True)
 
     fig2 = px.pie(
         seg_df, names="SEGMENT_CODE", values="CAPITAL",
         title="Capital requirement allocation",
         hole=0.45,
     )
-    col_b.plotly_chart(fig2, width="stretch")
+    col_b.plotly_chart(fig2, use_container_width=True)
 
     rating_order = ["AAA", "AA", "A", "BBB", "BB", "B", "CCC", "D"]
     rating_df = (
@@ -412,7 +445,7 @@ with tab_overview:
         labels={"PD_VALUE": "Average PD"},
         log_y=True,
     )
-    st.plotly_chart(fig3, width="stretch")
+    st.plotly_chart(fig3, use_container_width=True)
 
 with tab_segments:
     st.subheader("Regulatory segment view (mirror of V_PORTFOLIO_RISK)")
@@ -430,7 +463,7 @@ with tab_segments:
         "RWA_DENSITY":  "RWA density",
     })[["Segment", "Contracts", "Total EAD", "Total RWA",
         "Capital req.", "RWA density"]]
-    st.dataframe(display_df, hide_index=True, width="stretch")
+    st.dataframe(display_df, hide_index=True, use_container_width=True)
 
     country_df = (
         df.groupby("COUNTRY_CODE")
@@ -445,7 +478,7 @@ with tab_segments:
         title="EAD distribution by country",
         labels={"EAD": "EAD (EUR)", "COUNTRY_CODE": "Country"},
     )
-    st.plotly_chart(fig_country, width="stretch")
+    st.plotly_chart(fig_country, use_container_width=True)
 
 with tab_quality:
     st.subheader("Quality controls (CONTROL_LOG)")
@@ -458,11 +491,11 @@ with tab_quality:
             .reset_index(name="Findings")
             .sort_values(["SEVERITY", "CONTROL_CODE"])
         )
-        st.dataframe(summary, hide_index=True, width="stretch")
+        st.dataframe(summary, hide_index=True, use_container_width=True)
 
         sev = st.selectbox("Filter by severity", ["ALL", "ERROR", "WARNING", "INFO"])
         view = controls if sev == "ALL" else controls[controls["SEVERITY"].eq(sev)]
-        st.dataframe(view.head(500), hide_index=True, width="stretch")
+        st.dataframe(view.head(500), hide_index=True, use_container_width=True)
         st.caption(f"Showing {min(len(view), 500):,} of {len(view):,} findings.")
 
 with tab_data:
@@ -475,15 +508,176 @@ with tab_data:
     ]
     st.dataframe(
         df[cols].sort_values("RWA_VALUE", ascending=False).head(500),
-        hide_index=True, width="stretch",
+        hide_index=True, use_container_width=True,
     )
     st.caption(
         f"Showing top 500 of {len(df):,} filtered contracts, "
         "sorted by RWA descending."
     )
 
+with tab_simulator:
+    st.subheader("Single contract scorer")
+    st.markdown(
+        "Compute PD, LGD, EAD, RWA and capital requirement for a "
+        "hypothetical contract — same formulas as the Oracle engine."
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**Counterparty**")
+        cp_type = st.selectbox(
+            "Counterparty type",
+            ["RETAIL", "SME", "CORPORATE"],
+            key="sim_cp_type",
+        )
+        rating = st.selectbox(
+            "Internal rating",
+            ["AAA", "AA", "A", "BBB", "BB", "B", "CCC", "D"],
+            index=3,
+            key="sim_rating",
+        )
+        turnover = st.number_input(
+            "Annual turnover (EUR)",
+            min_value=0,
+            value=10_000_000,
+            step=500_000,
+            key="sim_turnover",
+        )
+
+    with col2:
+        st.markdown("**Contract**")
+        outstanding = st.number_input(
+            "Outstanding balance (EUR)",
+            min_value=1,
+            value=150_000,
+            step=5_000,
+            key="sim_outstanding",
+        )
+        residual = st.number_input(
+            "Residual value (EUR)",
+            min_value=0,
+            value=20_000,
+            step=1_000,
+            key="sim_residual",
+        )
+        provisions = st.number_input(
+            "Accounting provisions (EUR)",
+            min_value=0,
+            value=0,
+            step=1_000,
+            key="sim_provisions",
+        )
+        status = st.selectbox(
+            "Contract status",
+            ["ACTIVE", "WATCHLIST", "DEFAULT"],
+            key="sim_status",
+        )
+
+    with col3:
+        st.markdown("**Collateral**")
+        has_collateral = st.checkbox("Eligible collateral", value=True, key="sim_has_col")
+        col_value = st.number_input(
+            "Collateral value (EUR)",
+            min_value=0,
+            value=120_000,
+            step=5_000,
+            key="sim_col_value",
+            disabled=not has_collateral,
+        )
+        haircut = st.slider(
+            "Regulatory haircut",
+            min_value=0.0,
+            max_value=0.50,
+            value=0.15,
+            step=0.01,
+            format="%.0f%%",
+            key="sim_haircut",
+            disabled=not has_collateral,
+        )
+
+    # ---- Segmentation ----
+    if status == "DEFAULT":
+        segment = "DEFAULTED"
+    elif cp_type == "RETAIL":
+        segment = "RETAIL" if outstanding <= 1_000_000 else "CORPORATE"
+    elif cp_type == "SME":
+        if turnover <= 50_000_000 and outstanding <= 1_000_000:
+            segment = "SME_RETAIL"
+        else:
+            segment = "SME_CORP"
+    else:
+        segment = "CORPORATE"
+
+    # ---- PD ----
+    PD_MAP = {
+        "AAA": 0.0003, "AA": 0.0005, "A": 0.0010, "BBB": 0.0025,
+        "BB": 0.0100, "B": 0.0500, "CCC": 0.1500, "D": 1.0000,
+    }
+    PD_FLOOR = 0.0003
+    pd_val = max(PD_FLOOR, PD_MAP[rating])
+
+    # ---- EAD ----
+    CCF = 0.40
+    ead_val = max(0.0, outstanding - provisions + residual * CCF)
+
+    # ---- LGD ----
+    LGD_UNSECURED = {"RETAIL": 0.45, "SME_RETAIL": 0.45,
+                     "SME_CORP": 0.45, "CORPORATE": 0.45, "DEFAULTED": 0.45}
+    LGD_SECURED_BASE = 0.35
+    LGD_SECURED_FLOOR = 0.10
+    if has_collateral and ead_val > 0:
+        adjusted_col = col_value * (1 - haircut)
+        lgd_val = max(
+            LGD_SECURED_FLOOR,
+            LGD_SECURED_BASE * (1 - min(adjusted_col / ead_val, 1.0)),
+        )
+    else:
+        lgd_val = LGD_UNSECURED.get(segment, 0.45)
+
+    # ---- RWA ----
+    RW_MAP = {
+        "RETAIL": 0.75, "SME_RETAIL": 0.75, "SME_CORP": 0.85,
+        "CORPORATE": 1.00, "DEFAULTED": 1.50,
+    }
+    rw = RW_MAP[segment]
+    rwa_val = ead_val * rw
+    capital_val = rwa_val * 0.08
+
+    # ---- Display ----
+    st.markdown("---")
+    st.markdown(f"**Regulatory segment assigned : `{segment}`**")
+
+    r1, r2, r3, r4, r5 = st.columns(5)
+    r1.metric("PD", fmt_pct(pd_val, 3))
+    r2.metric("LGD", fmt_pct(lgd_val, 1))
+    r3.metric("EAD", fmt_eur(ead_val))
+    r4.metric("RWA", fmt_eur(rwa_val))
+    r5.metric("Capital req.", fmt_eur(capital_val))
+
+    with st.expander("Calculation detail"):
+        st.markdown(f"""
+        | Step | Formula | Result |
+        |------|---------|--------|
+        | Segment | Based on type / turnover / status | `{segment}` |
+        | PD | max(floor={fmt_pct(PD_FLOOR,3)}, rating PD) | `{fmt_pct(pd_val,4)}` |
+        | EAD | max(0, {outstanding:,} - {provisions:,} + {residual:,} × {CCF}) | `{fmt_eur(ead_val)}` |
+        | LGD | {'Secured method' if has_collateral else 'Unsecured fallback'} | `{fmt_pct(lgd_val,1)}` |
+        | Risk weight | Segment `{segment}` → {fmt_pct(rw,0)} | `{fmt_pct(rw,0)}` |
+        | RWA | {fmt_eur(ead_val)} × {fmt_pct(rw,0)} | `{fmt_eur(rwa_val)}` |
+        | Capital | {fmt_eur(rwa_val)} × 8% | `{fmt_eur(capital_val)}` |
+        """)
+
 st.markdown("---")
 st.caption(
     "Numbers produced by `python/compute_metrics.py` (reference). "
     "The Oracle PL/SQL engine returns identical aggregates within rounding."
+)
+st.markdown(
+    "**Basel III Credit Scoring Engine** — Tristan Mas, Business Analyst "
+    "Risk & Finance IT &nbsp;|&nbsp; "
+    "[GitHub](https://github.com/MasTristan/basel3-credit-scoring-engine) "
+    "&nbsp;|&nbsp; "
+    "[LinkedIn](https://linkedin.com/in/tristan-mas)",
+    unsafe_allow_html=True,
 )

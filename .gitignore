@@ -1,9 +1,40 @@
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 .venv/
 venv/
 env/
-.streamlit/secrets.toml
-python/data/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (generated — do not commit raw inserts)
+python/data/*.sql
+python/data/*.csv
+
+# Oracle
+*.log
+*.trc
+*.dmp
+wallet/
+tnsnames.ora
+sqlnet.ora
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.env
+config_local.py
