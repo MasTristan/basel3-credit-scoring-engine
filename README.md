@@ -1,5 +1,7 @@
 # Basel III Credit Scoring Engine
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://scoring-cr-dit-b-le-iii.streamlit.app/)
+
 PL/SQL engine that computes regulatory credit risk metrics (PD, LGD, EAD,
 RWA, capital requirement) for a synthetic automotive-leasing portfolio,
 following the Basel III / CRR2 **standard approach**.
@@ -8,9 +10,8 @@ The project is a public portfolio piece for a Business Analyst Risk &
 Finance IT profile combining Oracle PL/SQL expertise with EBA / Basel III
 regulation.
 
-> **Live demo (no install required):** the Streamlit app at
-> `streamlit_app.py` is deployed on Streamlit Community Cloud — see
-> section *Live demo* below.
+> **Live demo (no install required):**
+> **<https://scoring-cr-dit-b-le-iii.streamlit.app/>**
 
 ---
 
@@ -119,7 +120,7 @@ projet1_bale3/
 The dashboard at `streamlit_app.py` is published on Streamlit Community
 Cloud — open it in a browser, no install required.
 
-> **URL**: _add the deployed URL here after first deploy_
+> **URL**: <https://scoring-cr-dit-b-le-iii.streamlit.app/>
 
 To deploy your own copy:
 
