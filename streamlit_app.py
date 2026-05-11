@@ -148,9 +148,226 @@ k6.metric("Default rate",    fmt_pct(default_rate))
 # Tabs                                                                         #
 # --------------------------------------------------------------------------- #
 
-tab_overview, tab_segments, tab_quality, tab_data = st.tabs(
-    ["Overview", "Segment breakdown", "Quality controls", "Raw data"]
+tab_about, tab_overview, tab_segments, tab_quality, tab_data = st.tabs(
+    ["About this engine", "Overview", "Segment breakdown",
+     "Quality controls", "Raw data"]
 )
+
+with tab_about:
+    st.markdown(
+        """
+        ### What problem does this engine solve?
+
+        Under **Basel III**, banks must hold a minimum amount of regulatory
+        capital against their credit exposures — this is the **first pillar**
+        of the framework, transposed into EU law via the
+        **Capital Requirements Regulation 2 (CRR2)**.
+
+        The **standard approach** (used here) computes risk-weighted assets
+        (RWA) by applying regulator-defined risk weights to exposures,
+        instead of estimating them with internal models (IRB approach).
+        It is the default approach for banks that do not have, or do not
+        want to defend, internal models — typically smaller banks or
+        non-core portfolios of larger groups.
+
+        The portfolio scored here is a **synthetic automotive-leasing book**
+        (5 000 contracts across France, Germany, Spain, Italy, Belgium and
+        the Netherlands) — representative of a captive-finance subsidiary
+        of a European bank.
+        """
+    )
+
+    st.markdown("---")
+    st.subheader("The five regulatory metrics")
+    st.markdown(
+        "Each contract is scored along five metrics. The first three (PD, "
+        "LGD, EAD) are inputs; the last two (RWA, K) are outputs."
+    )
+
+    with st.expander("PD — Probability of Default", expanded=False):
+        st.markdown(
+            "Probability that the obligor defaults within a 1-year horizon. "
+            "In the standard approach, PD is derived from the **internal "
+            "rating**, with a regulatory floor (CRR2 Article 160)."
+        )
+        st.latex(r"PD \;=\; \max\bigl(PD_{\text{floor}},\; PD_{\text{rating}}\bigr)")
+        st.caption(
+            "Rating mapping used: AAA 0.03 % · AA 0.05 % · A 0.10 % · "
+            "BBB 0.25 % · BB 1.00 % · B 5.00 % · CCC 15.00 % · D 100 %."
+        )
+
+    with st.expander("LGD — Loss Given Default", expanded=False):
+        st.markdown(
+            "Share of the exposure that is **lost** when default occurs, "
+            "after recoveries (collateral liquidation, guarantor calls, …). "
+            "Eligible collateral reduces LGD via a **comprehensive method** "
+            "with regulatory haircuts (CRR2 Articles 197-230)."
+        )
+        st.latex(
+            r"LGD_{\text{secured}} \;=\; LGD_{\text{base}}"
+            r"\times\left(1 - \min\!\left("
+            r"\frac{C \times (1 - h)}{EAD},\; 1\right)\right)"
+        )
+        st.markdown(
+            "with a **10 % floor** on the secured part. Unsecured exposures "
+            "fall back to the regulatory LGD (45 % in the Foundation IRB "
+            "default, used here as a proxy for the standard approach)."
+        )
+
+    with st.expander("EAD — Exposure At Default", expanded=False):
+        st.markdown(
+            "Amount the bank expects to be at risk at the moment of "
+            "default. For leasing, EAD combines the **outstanding balance**, "
+            "the **accounting provisions** already booked, and the "
+            "**residual value** (off-balance commitment) converted via a "
+            "**Credit Conversion Factor** — CRR2 Article 166."
+        )
+        st.latex(
+            r"EAD \;=\; \max\!\bigl(0,\; "
+            r"\text{Outstanding} - \text{Provisions} + "
+            r"\text{Residual} \times CCF\bigr)"
+        )
+
+    with st.expander("RWA — Risk-Weighted Assets", expanded=False):
+        st.markdown(
+            "Exposure scaled by a regulator-set **risk weight**, which "
+            "depends on the obligor's segment and on the asset class. "
+            "RWA is the denominator of the bank's **solvency ratio**."
+        )
+        st.latex(r"RWA \;=\; EAD \times RW")
+
+    with st.expander("K — Capital requirement", expanded=False):
+        st.markdown(
+            "Minimum regulatory capital the bank must hold against the "
+            "exposure — **8 % of RWA** under Pillar 1 (CRR2 Article 92). "
+            "Pillar 2 add-ons and capital buffers (conservation, "
+            "counter-cyclical, systemic) sit on top of this figure and are "
+            "out of scope here."
+        )
+        st.latex(r"K \;=\; RWA \times 8\%")
+
+    st.markdown("---")
+    st.subheader("Segmentation logic")
+    st.markdown(
+        "Each contract is routed to one of five regulatory segments. The "
+        "segment drives the base risk weight, and a preferential 50 % "
+        "weight applies to well-collateralized vehicle leases "
+        "(LTV ≤ 50 %)."
+    )
+    seg_table = pd.DataFrame([
+        {"Segment": "RETAIL",
+         "Criteria": "Retail obligor, exposure ≤ 1 MEUR",
+         "Risk weight": "75 %",
+         "CRR2 ref.": "Art. 123"},
+        {"Segment": "SME_RETAIL",
+         "Criteria": "SME, turnover ≤ 50 MEUR, exposure ≤ 1 MEUR",
+         "Risk weight": "75 %",
+         "CRR2 ref.": "Art. 123 + SME supporting factor"},
+        {"Segment": "SME_CORP",
+         "Criteria": "SME outside the retail bucket",
+         "Risk weight": "85 %",
+         "CRR2 ref.": "Art. 122"},
+        {"Segment": "CORPORATE",
+         "Criteria": "Corporate obligor",
+         "Risk weight": "100 %",
+         "CRR2 ref.": "Art. 122"},
+        {"Segment": "DEFAULTED",
+         "Criteria": "Contract STATUS = DEFAULT (overrides the above)",
+         "Risk weight": "150 %",
+         "CRR2 ref.": "Art. 127"},
+    ])
+    st.dataframe(seg_table, hide_index=True, width="stretch")
+
+    st.markdown("---")
+    st.subheader("Pipeline architecture")
+    st.markdown(
+        """
+        The **production engine is in Oracle PL/SQL** — five packages
+        orchestrated by `PROC_MAIN_PIPELINE`:
+
+        1. `PKG_SEGMENTATION` — assigns the regulatory segment.
+        2. `PKG_RISK_PARAMS` — computes PD, LGD and EAD per contract.
+        3. `PKG_RWA_ENGINE` — applies risk weights, derives RWA and K,
+           writes **SCD2** rows in `RISK_CALCULATIONS` so every run is
+           historized.
+        4. `PKG_CONTROLS` — runs eight data-quality controls, logs
+           findings into `CONTROL_LOG`.
+        5. `PROC_MAIN_PIPELINE` — orchestrator with start/end logging and
+           error handling.
+
+        This Streamlit app does **not** call the database. It reads a
+        snapshot produced by `python/compute_metrics.py`, which mirrors
+        the PL/SQL logic in pandas. Same inputs → same numbers within
+        rounding; the Oracle engine remains the source of truth, the
+        Python module is a sandbox and a demo-feeder.
+        """
+    )
+
+    st.markdown("---")
+    st.subheader("Quality controls")
+    st.markdown(
+        "Production pipelines always include a control layer — eight rules "
+        "run after each batch and findings land in `CONTROL_LOG` for "
+        "follow-up. The full breakdown is in the **Quality controls** tab."
+    )
+    ctl_table = pd.DataFrame([
+        {"Code": "CTR-001", "Severity": "ERROR",
+         "Rule": "OUTSTANDING_BALANCE ≤ 0"},
+        {"Code": "CTR-002", "Severity": "WARNING",
+         "Rule": "Contract expired (MATURITY_DATE < today)"},
+        {"Code": "CTR-003", "Severity": "ERROR",
+         "Rule": "PD missing after calculation"},
+        {"Code": "CTR-004", "Severity": "ERROR",
+         "Rule": "LGD outside [0, 1]"},
+        {"Code": "CTR-005", "Severity": "WARNING",
+         "Rule": "EAD exceeds 120 % of original amount"},
+        {"Code": "CTR-006", "Severity": "WARNING",
+         "Rule": "RWA = 0 on an ACTIVE contract"},
+        {"Code": "CTR-007", "Severity": "WARNING",
+         "Rule": "Collateral value > 3× outstanding (over-collateralized)"},
+        {"Code": "CTR-008", "Severity": "ERROR",
+         "Rule": "Counterparty defaulted but contract STATUS ≠ DEFAULT"},
+    ])
+    st.dataframe(ctl_table, hide_index=True, width="stretch")
+
+    st.markdown("---")
+    st.subheader("How to read this dashboard")
+    st.markdown(
+        """
+        - The **KPI row at the top** stays in sync with the sidebar
+          filters — change a filter, every number updates.
+        - **Overview**: EAD vs RWA per segment, capital allocation,
+          average PD by rating (log scale, useful since rating-driven PDs
+          span four orders of magnitude).
+        - **Segment breakdown**: mirrors the `V_PORTFOLIO_RISK` view in
+          Oracle plus a country drill-down.
+        - **Quality controls**: full `CONTROL_LOG` with severity filter.
+        - **Raw data**: top 500 contracts by RWA — the working set risk
+          analysts would investigate first.
+        """
+    )
+
+    st.markdown("---")
+    st.subheader("Regulatory references")
+    ref_table = pd.DataFrame([
+        {"Topic": "Capital requirement (8 % of RWA)", "Reference": "CRR2 Art. 92"},
+        {"Topic": "Exposures to corporates",          "Reference": "CRR2 Art. 122"},
+        {"Topic": "Exposures to retail clients",      "Reference": "CRR2 Art. 123"},
+        {"Topic": "Defaulted exposures (150 % RW)",   "Reference": "CRR2 Art. 127"},
+        {"Topic": "PD floor (standard approach)",     "Reference": "CRR2 Art. 160"},
+        {"Topic": "EAD definition",                    "Reference": "CRR2 Art. 166"},
+        {"Topic": "Eligible collateral / haircuts",   "Reference": "CRR2 Art. 197-230"},
+        {"Topic": "Definition of default",             "Reference": "EBA/GL/2016/07"},
+    ])
+    st.dataframe(ref_table, hide_index=True, width="stretch")
+
+    st.markdown("---")
+    st.markdown(
+        "**Author** — Tristan Mas, Business Analyst Risk & Finance IT. "
+        "Combines Oracle PL/SQL engineering with EBA / Basel III "
+        "regulatory expertise. "
+        "[GitHub](https://github.com/MasTristan/Moteur-de-Scoring-Cr-dit-B-le-III)"
+    )
 
 with tab_overview:
     col_a, col_b = st.columns(2)
