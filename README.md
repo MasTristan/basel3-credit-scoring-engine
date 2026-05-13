@@ -20,7 +20,7 @@ Finance IT profile combining Oracle PL/SQL expertise with EBA / Basel III
 regulation.
 
 > **Live demo (no install required):**
-> **<https://scoring-cr-dit-b-le-iii.streamlit.app/>**
+> **<https://basel3-credit-scoring-engine.streamlit.app/>**
 
 ---
 
